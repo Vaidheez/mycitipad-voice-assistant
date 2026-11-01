@@ -9,13 +9,11 @@ type ConnectionDetails = {
   participantToken: string;
 };
 
-// NOTE: you are expected to define the following environment variables in `.env.local`:
 const API_KEY = process.env.LIVEKIT_API_KEY;
 const API_SECRET = process.env.LIVEKIT_API_SECRET;
 const LIVEKIT_URL = process.env.LIVEKIT_URL;
 const AGENT_NAME = process.env.AGENT_NAME;
 
-// don't cache the results
 export const revalidate = 0;
 
 export async function POST(req: Request) {
@@ -30,32 +28,53 @@ export async function POST(req: Request) {
       throw new Error('LIVEKIT_API_SECRET is not defined');
     }
 
-    // Parse room config from request body (if provided).
+    // Parse body and extract optional caller ID
     const body = await req.json().catch(() => ({}));
+    const callerId =
+      body?.participantAttributes?.mcp_caller_id ||
+      body?.participant_attributes?.mcp_caller_id ||
+      body?.mcp_caller_id ||
+      req.headers.get('x-mcp-caller-id');
+
     let roomConfig: RoomConfiguration | undefined;
     if (body?.room_config) {
       roomConfig = RoomConfiguration.fromJson(body.room_config, { ignoreUnknownFields: true });
-    } else if (AGENT_NAME) {
-      // When AGENT_NAME is set, configure explicit agent dispatch so the named
-      // agent worker picks up the job when a user joins the room.
+    }
+
+    const defaultAgent = AGENT_NAME || 'my-agent';
+    if (!roomConfig) {
       roomConfig = RoomConfiguration.fromJson(
-        { agents: [{ agentName: AGENT_NAME }] },
+        { agents: [{ agentName: defaultAgent }] },
+        { ignoreUnknownFields: true }
+      );
+    } else if (!roomConfig.agents || roomConfig.agents.length === 0) {
+      const configJson = (roomConfig.toJson() || {}) as Record<string, unknown>;
+      roomConfig = RoomConfiguration.fromJson(
+        { ...configJson, agents: [{ agentName: defaultAgent }] },
         { ignoreUnknownFields: true }
       );
     }
-      
-    // Generate participant token
+
     const participantName = 'user';
     const participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
     const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
 
+    const attributes: Record<string, string> = {};
+    if (callerId) {
+      attributes['mcp_caller_id'] = String(callerId);
+    }
+
     const participantToken = await createParticipantToken(
-      { identity: participantIdentity, name: participantName },
+      {
+        identity: participantIdentity,
+        name: participantName,
+        attributes,
+        metadata: callerId ? JSON.stringify({ mcp_caller_id: callerId }) : undefined,
+      },
       roomName,
       roomConfig
     );
 
-    // Return connection details
     const data: ConnectionDetails = {
       serverUrl: LIVEKIT_URL,
       roomName,

@@ -5,6 +5,14 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* MyCitiPad Brand Tokens */
+  --mcp-primary: #1e293b; /* TODO: pick from logo */
+  --mcp-accent: #0284c7; /* TODO: pick from logo */
+  --mcp-bg: #f8fafc;
+  --mcp-surface: #ffffff;
+  --mcp-text: #0f172a;
+  --mcp-danger: #dc2626;
+
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -40,6 +48,14 @@
 }
 
 .dark {
+  /* MyCitiPad Brand Tokens (Dark Mode) */
+  --mcp-primary: #0f172a; /* TODO: pick from logo */
+  --mcp-accent: #38bdf8; /* TODO: pick from logo */
+  --mcp-bg: #090d16;
+  --mcp-surface: #131c2e;
+  --mcp-text: #f8fafc;
+  --mcp-danger: #ef4444;
+
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -80,6 +96,13 @@
   --font-mono:
     var(--font-commit-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     'Liberation Mono', 'Courier New', monospace;
+
+  --color-mcp-primary: var(--mcp-primary);
+  --color-mcp-accent: var(--mcp-accent);
+  --color-mcp-bg: var(--mcp-bg);
+  --color-mcp-surface: var(--mcp-surface);
+  --color-mcp-text: var(--mcp-text);
+  --color-mcp-danger: var(--mcp-danger);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);

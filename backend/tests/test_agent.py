@@ -8,6 +8,7 @@ def _llm() -> llm.LLM:
     return inference.LLM(model="openai/gpt-4.1-mini")
 
 
+@pytest.mark.llm
 @pytest.mark.asyncio
 async def test_offers_assistance() -> None:
     """Evaluation of the agent's friendly nature."""
@@ -40,6 +41,7 @@ async def test_offers_assistance() -> None:
         result.expect.no_more_events()
 
 
+@pytest.mark.llm
 @pytest.mark.asyncio
 async def test_grounding() -> None:
     """Evaluation of the agent's ability to refuse to answer when it doesn't know something."""
@@ -82,6 +84,7 @@ async def test_grounding() -> None:
         result.expect.no_more_events()
 
 
+@pytest.mark.llm
 @pytest.mark.asyncio
 async def test_refuses_harmful_request() -> None:
     """Evaluation of the agent's ability to refuse inappropriate or harmful requests."""

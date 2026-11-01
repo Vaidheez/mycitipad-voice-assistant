@@ -168,6 +168,173 @@ If the agent doesn't connect, double-check that both services point to the same 
 
 ---
 
+---
+
+## MyCitiPad Virtual Receptionist
+
+An enterprise voice AI receptionist engineered for **MyCitiPad**, a UK property lettings and sales agency. Powered by LiveKit Agents, Murf Falcon 2 TTS (Hazel UK English), Deepgram Nova-3 STT, and Google Gemini. The agent handles inbound calls, screens and routes enquiries, enforces strict real estate compliance guardrails, books viewings against an SQLite-backed calendar, remembers returning callers with explicit consent, and escalates to human agents when requested.
+
+```mermaid
+flowchart TD
+    G["📞 Greeting (Recorded call disclosure)"] --> R{"Lettings or Sales?"}
+    R -->|Sales| S["Sales Lead (6 Standard Details)"]
+    R -->|Lettings| L{"Enquiry or Maintenance?"}
+    L -->|Enquiry| LE["Lettings Enquiry (9 Questions in Order)"]
+    L -->|Maintenance| M{"Emergency or Issue?"}
+    M -->|Emergency| ME["⚠️ Safety Wording First (999 / 0800 111 999)<br/>Save Emergency Record & Offer Person"]
+    M -->|Issue| MI["Maintenance Request (6 Standard Details)"]
+    LE --> V{"Viewing Requested?"}
+    V -->|Yes| BK["find_property → check_viewing_availability → book_viewing"]
+    V -->|No| SR["save_call_record (lettings_enquiry)"]
+    BK --> CR["save_call_record (viewing)"]
+    S --> SS["save_call_record (sales_lead)"]
+    MI --> MR["save_call_record (maintenance_request)"]
+    CR --> MC{"Consent to Remember?"}
+    SR --> MC
+    SS --> MC
+    MR --> MC
+    ME --> MC
+    MC -->|Yes| SP["save_caller_profile"]
+    MC -->|No / Unclear| NC["No Profile Saved"]
+```
+
+### 1. Setup & Environment Variables
+
+In addition to the starter's standard keys (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `MURF_API_KEY`, `DEEPGRAM_API_KEY`, `GOOGLE_API_KEY`), the MyCitiPad agent supports these runtime configuration switches in `backend/.env.local`:
+
+| Variable | Description | Default |
+|---|---|---|
+| `MCP_DB_PATH` | Path to the SQLite database file | `backend/data/mycitipad.db` |
+| `MCP_HUMAN_AVAILABLE` | Simulates live human operator availability (`true` / `false`) | `false` |
+| `MCP_SIMULATE_FAILURE` | Injects controlled tool failure (`properties`, `calendar`, `records`, `handover`, `callback`) | `""` (none) |
+
+#### Running the Full Stack:
+```bash
+# Terminal 1 — Backend (with auto-reload)
+cd backend
+uv sync
+uv run python src/db.py          # Initialize & seed SQLite database
+uv run python src/agent.py dev   # Start agent worker
+
+# Terminal 2 — Frontend
+cd frontend
+pnpm install
+pnpm dev
+```
+Open **http://localhost:3000** to interact with the MyCitiPad branded interface.
+
+---
+
+### 2. Quoted Call Objectives, Guardrails & Escalation
+
+Directly quoted from [`backend/src/prompt.py`](backend/src/prompt.py):
+
+#### Call Objectives
+```text
+A successful call does one of these:
+1. Routes the caller to the right path (lettings enquiry, maintenance
+   emergency, maintenance issue, or sales) within two turns.
+2. Collects every required detail for that path, one question at a
+   time, and saves it with the correct tool.
+3. Ends with a confirmed outcome: viewing booked, request/lead saved,
+   call transferred, or callback number logged. Never end without one.
+```
+
+#### Guardrails
+```text
+ - Never state a viewing is booked, a lead is saved, or a call is
+   transferred until the tool result confirms it.
+ - Never give or promise a callback time, viewing slot, price,
+   valuation, or contractor visit time.
+ - Never ask for documents on the call.
+ - Never give legal, financial or mortgage advice.
+ - If the caller asks for a person, say so and call transfer_to_human.
+   If it fails, take a callback number and call request_callback.
+ - MEMORY: before saving anything about the caller for future calls,
+   say "Is it okay if I remember these details for next time?"
+   If no, do not call save_caller_profile.
+ - If a tool fails or times out, say so plainly, never invent a result,
+   and offer a callback or a human.
+```
+
+#### Escalation Script
+```text
+If the caller asks for a person, say "Of course, let me pass you over" and call transfer_to_human.
+If it is unavailable or fails, ask for a callback number and call request_callback:
+"I can't connect you right now. What's the best number for a callback?"
+```
+
+---
+
+### 3. Prompt Structure & Six Headings
+
+All system prompt instructions reside in [`backend/src/prompt.py`](backend/src/prompt.py) and are organized into six clear semantic sections:
+
+1. **`IDENTITY`** (`prompt.py` line 54): Defines the persona as the AI virtual phone receptionist for MyCitiPad, enforcing transparent AI identity and boundary limits.
+2. **`OBJECTIVES`** (`prompt.py` line 60): Concrete definition of the 3 call success criteria.
+3. **`KNOWLEDGE`** (`prompt.py` line 107): Strict epistemic boundary — agent knows only what tools return and refuses to invent prices, tenancy laws, or valuations.
+4. **`LANGUAGE`** (`prompt.py` line 113): British English phrasing, UK currency conventions ("five hundred thousand pounds", never "lakh"), and multilingual mirroring.
+5. **`GUARDRAILS`** (`prompt.py` line 119): Explicit refusals, anti-hallucination rules, never-claims, and escalation logic.
+6. **`STYLE`** (`prompt.py` line 134): Spoken phone cadence, single question per turn, silence detection ("Are you still there?"), and natural pronunciation rules for postcodes and emails.
+
+---
+
+### 4. Domain & Memory Tools Table
+
+Every tool call is wrapped in a universal 4.0-second timeout (`TOOL_TIMEOUT_S = 4.0`) and returns an explicit, spoken fallback message on failure:
+
+| Tool Name | Module | Purpose | Failure Spoken Fallback |
+|---|---|---|---|
+| `find_property` | `tools.py` | Searches properties by keyword/address and property type | *"I'm having trouble checking properties right now. I can still take your details for the team. Shall I continue?"* |
+| `check_viewing_availability` | `tools.py` | Queries calendar provider for up to 4 available 30-min slots | *"I can't see the diary just now. I can take your details and ask the team to arrange the viewing. Is that all right?"* |
+| `book_viewing` | `tools.py` | Books viewing slot atomically with conflict resolution | *"I couldn't complete that booking, so please don't treat it as booked. I can try once more, or take your details for the team."* |
+| `save_call_record` | `tools.py` | Persists structured call record (`lettings_enquiry`, `viewing`, `emergency`, `maintenance_request`, `sales_lead`) | *"I couldn't save that just now. Could I take a callback number so the team can follow up?"* |
+| `transfer_to_human` | `tools.py` | Checks operator availability and initiates live transfer | *"I can't connect you right now. What's the best number for a callback?"* |
+| `request_callback` | `tools.py` | Logs callback request in queue when human is unavailable | *"I couldn't log that. Please call us on 020 3576 6575."* |
+| `lookup_caller` | `memory_tools.py` | Retrieves existing profile and call history by email or phone | Gracefully logs debug warning and continues without historical profile |
+| `record_memory_consent` | `memory_tools.py` | Records explicit caller consent (`True` or `False`) in session state | Defaults to no consent granted (`consent_granted=False`) |
+| `save_caller_profile` | `memory_tools.py` | Saves allow-listed caller facts if and only if consent is granted | Silent rejection if consent absent; reports graceful error to agent |
+| `forget_caller` | `memory_tools.py` | Deletes caller profile and unlinks historical call logs (GDPR Right to Erasure) | Informs caller erasure could not be completed and offers manual team escalation |
+
+---
+
+### 5. Memory Mechanics & Privacy Governance
+
+- **Explicit Consent Gate:** The agent asks `"Is it okay if I remember these details for next time?"` before calling `save_caller_profile`. If the caller says no, hesitates, or is ambiguous, consent is marked `False` and no profile row is written.
+- **Allowed Facts:** Only non-sensitive preferences (e.g. `"looking for 2 bedroom flat"`, `"preferred viewing on Saturdays"`, `"garden preferred"`).
+- **Prohibited Sensitive Facts:** Employment status, annual income, credit history, guarantor requirements, and personal residential addresses are strictly blocked from memory storage.
+- **GDPR Deletion:** Callers can request `"forget my details"`. The `forget_caller` tool immediately deletes the `callers` record and sets `user_id = NULL` on existing call logs for business audit retention without personal linkage.
+
+---
+
+### 6. Known Limits & Assumptions
+
+1. **Simulated Human Transfer:** Transfer is simulated via `MCP_HUMAN_AVAILABLE`. In production, LiveKit SIP referral (`REFER`) or telephony bridge will connect to physical phone lines.
+2. **Mock Calendar:** Viewing hours (Mon–Sat 10:00–17:00 UK time, 30-min slots, 2-hour minimum notice) are operating assumptions configured in `config.py`.
+3. **Demo Properties:** Property listings (e.g. 14 Canary Wharf Riverside, 8 Shoreditch High Street) are fictional seed fixtures.
+4. **UK Regulatory Advice:** Agent has no licensed legal or financial authority and will strictly decline advice on tenancy disputes, evictions, or mortgage products.
+5. **Language Support:** Agent understands and replies in Spanish, French, and Arabic where supported by the STT/LLM pipeline; however, Murf Falcon voice `Hazel` is UK English and best suited for English speech synthesis.
+
+---
+
+### 7. Running the Test Suites
+
+```bash
+# Fast Unit, Database, and Conversation Test Suite (No API keys or network required)
+cd backend
+uv run pytest -m "not llm"
+
+# LiveKit LLM-as-judge Evaluation Suite (Requires LiveKit & LLM keys)
+uv run pytest -m llm
+
+# Frontend linting and production build verification
+cd ../frontend
+pnpm lint
+pnpm build
+```
+
+---
+
 ## Change the Use Case
 
 The default system prompt makes this a **customer support agent**. You can change the agent’s behavior by editing the prompt.

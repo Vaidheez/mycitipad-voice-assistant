@@ -142,7 +142,7 @@ async def inbound_agent(ctx: JobContext):
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=google.LLM(
-            model="gemini-2.5-flash",
+            model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
         ),
         tts=murf.TTS(
             voice="en-US-matthew",

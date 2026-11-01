@@ -51,17 +51,16 @@ uv run python src/agent.py download-files
 
 This downloads Silero VAD and the LiveKit turn detector models.
 
-### 4. Run the agent
+### 4. Run the FastAPI Backend Server & Agent
 
 ```bash
-# Development mode (auto-reload)
-uv run python src/agent.py dev
+# Run FastAPI server on port 8000 (auto-manages LiveKit agent worker in background)
+uv run python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
 
-# Or test directly in your terminal (no frontend needed)
+# Swagger API docs will be available at: http://localhost:8000/docs
+
+# Or run the terminal-only agent console:
 uv run python src/agent.py console
-
-# Production
-uv run python src/agent.py start
 ```
 
 ## Configuration
@@ -189,15 +188,30 @@ No extra dependencies required. Full setup guide: [`src/telephony/README.md`](sr
 
 ## Testing
 
-The project includes an eval suite based on the LiveKit Agents [testing framework](https://docs.livekit.io/agents/build/testing/):
+The backend includes both a fast deterministic test suite and LiveKit LLM-as-judge evaluations:
+
+### 1. Fast Unit & Conversation Suite (No API keys or network required)
+Runs in under 30 seconds, testing all database transactions, consent gating, tool timeouts, fallback mechanisms, and all 30 conversation scenarios (Flow, Guardrails, Memory, Robustness):
 
 ```bash
-uv run pytest
+uv run pytest -m "not llm"
 ```
 
-Tests are in [`tests/test_agent.py`](tests/test_agent.py) and use LLM-as-judge evaluations to verify the agent behaves correctly (friendly greetings, grounding, refusing harmful requests).
+You can also run specific test modules directly:
+```bash
+uv run pytest tests/test_conversations.py
+uv run pytest tests/test_tools.py
+uv run pytest tests/test_memory.py
+```
 
-To run tests in CI, you'll need to add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` as repository secrets.
+### 2. LiveKit LLM Evaluation Suite (Requires API keys)
+Runs LLM-as-judge evaluations to verify real-time voice pipeline responses and judge model behaviors:
+
+```bash
+uv run pytest -m llm
+```
+
+Requires `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, and `GOOGLE_API_KEY` (or `OPENAI_API_KEY`) set in `.env.local`.
 
 ## Deployment
 

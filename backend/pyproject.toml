@@ -9,10 +9,14 @@ description = "Voice AI agent starter powered by Murf Falcon TTS and LiveKit Age
 requires-python = ">=3.10, <3.15"
 
 dependencies = [
+    "fastapi>=0.141.1",
     "livekit-agents[deepgram,google,silero,turn-detector]~=1.4",
     "livekit-murf>=0.1.1",
     "livekit-plugins-noise-cancellation~=0.2",
     "python-dotenv",
+    "twilio>=9.0.0",
+    "tzdata>=2026.6",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
@@ -31,6 +35,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "llm: marks tests that require live external LLM API access",
+]
 
 [tool.ruff]
 line-length = 88
